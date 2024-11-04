@@ -1,7 +1,68 @@
-from confluent_kafka.admin import AdminClient, NewTopic, KafkaException
-from confluent_kafka import TopicCollection, TopicPartition, OffsetSpec, IsolationLevel
+from confluent_kafka.admin import AdminClient
+from confluent_kafka import TopicCollection, IsolationLevel
 import logging
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from typing import List
+import uvicorn
+app = FastAPI()
 
+class TopicRequest(BaseModel):
+    topics: List[str]
+
+class DescribeTopicsRequest(BaseModel):
+    include_auth_ops: bool
+    topics: List[str]
+
+class ListOffsetsRequest(BaseModel):
+    isolation_level: str
+    topic_partition_offsets: List[str]
+
+class DeleteRecordsRequest(BaseModel):
+    topic_partition_offsets: List[str]
+
+@app.post("/topics/v1/create", tags=["topics"], description="Create new topics in the Kafka cluster.")
+async def create_topics(request: TopicRequest, a: AdminClient):
+    try:
+        result = create(a, request.topics)
+        return result
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/topics/v1/delete", tags=["topics"], description="Delete topics from the Kafka cluster.")
+async def delete_topics(request: TopicRequest, a: AdminClient):
+    try:
+        result = delete(a, request.topics)
+        return result
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/topics/v1/describe", tags=["topics"], description="Describe topics in the Kafka cluster.")
+async def describe_topics_endpoint(request: DescribeTopicsRequest, a: AdminClient):
+    try:
+        result = describe_topics(a, [str(int(request.include_auth_ops))] + request.topics)
+        return result
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/topics/v1/offsets/list", tags=["topics"], description="List offsets for the given topics and partitions.")
+async def list_offsets_endpoint(request: ListOffsetsRequest, a: AdminClient):
+    try:
+        result = list_offsets(a, [request.isolation_level] + request.topic_partition_offsets)
+        return result
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/topics/v1/records/delete", tags=["topics"], description="Delete records from the given topics and partitions.")
+async def delete_records_endpoint(request: DeleteRecordsRequest, a: AdminClient):
+    try:
+        result = delete_records(a, request.topic_partition_offsets)
+        return result
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
 
 logging.basicConfig()
 
